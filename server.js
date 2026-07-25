@@ -7,6 +7,8 @@ import { setDefaultResultOrder } from "node:dns";
 setDefaultResultOrder("ipv4first");
 import https from "node:https";
 
+// TMDB connection resets intermittently with Node's default keep-alive behavior on this setup.
+// Disabling keep-alive resolves it.
 const agent = new https.Agent({ keepAlive: false });
 
 const app = express();
@@ -83,6 +85,57 @@ app.post("/movies", async (req, res) => {
   } catch (err) {
     console.log(err);
     res.status(500).json({ error: "Failed to save movie" });
+  }
+});
+
+app.get("/movies/:id", async (req, res) => {
+  const searchID = req.params.id;
+  try {
+    const result = await pool.query("SELECT * FROM movies WHERE id=$1", [
+      searchID,
+    ]);
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: "Movie not found" });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "Failed to Find Movie" });
+  }
+});
+
+app.put("/movies/:id", async (req, res) => {
+  const searchID = req.params.id;
+  const { your_rating, your_notes, date_watched } = req.body;
+  try {
+    const result = await pool.query(
+      "UPDATE movies SET your_rating=$1 , your_notes=$2,date_watched=$3 WHERE id=$4 RETURNING *",
+      [your_rating, your_notes, date_watched, searchID],
+    );
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: "Movie not found" });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "Failed to Update Movie" });
+  }
+});
+
+app.delete("/movies/:id", async (req, res) => {
+  const searchID = req.params.id;
+  try {
+    const result = await pool.query(
+      "DELETE FROM movies WHERE id=$1 RETURNING *",
+      [searchID],
+    );
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: "Movie not found" });
+    }
+    res.json({ message: "Movie Deleted", movie: result.rows[0] });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "Failed to Delete Movie" });
   }
 });
 
