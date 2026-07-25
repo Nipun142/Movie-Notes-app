@@ -5,6 +5,9 @@ import pool from "./db.js";
 import axios from "axios";
 import { setDefaultResultOrder } from "node:dns";
 setDefaultResultOrder("ipv4first");
+import https from "node:https";
+
+const agent = new https.Agent({ keepAlive: false });
 
 const app = express();
 
@@ -40,10 +43,9 @@ app.get("/movies/search", async (req, res) => {
     const response = await axios.get(
       "https://api.themoviedb.org/3/search/movie",
       {
-        params: {
-          query,
-          api_key: process.env.TMDB_API_KEY,
-        },
+        params: { query, api_key: process.env.TMDB_API_KEY },
+        httpsAgent: agent,
+        timeout: 8000,
       },
     );
     res.json(response.data.results);
