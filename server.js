@@ -1,11 +1,11 @@
+import "dotenv/config";
 import express from "express";
-import pg from "pg";
-import bodyParser from "body-parser";
 import pool from "./db.js";
 import axios from "axios";
 import { setDefaultResultOrder } from "node:dns";
-setDefaultResultOrder("ipv4first");
 import https from "node:https";
+
+setDefaultResultOrder("ipv4first");
 
 // TMDB connection resets intermittently with Node's default keep-alive behavior on this setup.
 // Disabling keep-alive resolves it.
@@ -14,7 +14,6 @@ const agent = new https.Agent({ keepAlive: false });
 const app = express();
 
 app.use(express.json());
-app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
 app.set("view engine", "ejs");
@@ -40,6 +39,8 @@ async function fetchTMDB(url, params, retries = 3) {
   }
 }
 
+// ---------- PAGE ROUTES ----------
+
 app.get("/", async (req, res) => {
   const { sort } = req.query;
   let orderBy = "created_at DESC";
@@ -51,17 +52,8 @@ app.get("/", async (req, res) => {
     const result = await pool.query(`SELECT * FROM movies ORDER BY ${orderBy}`);
     res.render("index", { movies: result.rows, currentSort: sort });
   } catch (err) {
-    console.log(err);
+    console.error(err);
     res.status(500).send("Failed to load movies");
-  }
-});
-
-app.get("/movies", async (req, res) => {
-  try {
-    const result = await pool.query("SELECT title FROM movies");
-    res.json(result.rows);
-  } catch (err) {
-    console.log(err);
   }
 });
 
@@ -69,21 +61,59 @@ app.get("/add", (req, res) => {
   res.render("add");
 });
 
+app.get("/movies/:id/view", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query("SELECT * FROM movies WHERE id = $1", [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).send("Movie not found");
+    }
+    res.render("movie", { movie: result.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Failed to load movie");
+  }
+});
+
+// ---------- JSON API ROUTES ----------
+
+app.get("/movies", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM movies ORDER BY created_at DESC",
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch movies" });
+  }
+});
+
 app.get("/movies/search", async (req, res) => {
   const { query } = req.query;
   try {
-    const response = await axios.get(
-      "https://api.themoviedb.org/3/search/movie",
-      {
-        params: { query, api_key: process.env.TMDB_API_KEY },
-        httpsAgent: agent,
-        timeout: 8000,
-      },
-    );
-    res.json(response.data.results);
+    const data = await fetchTMDB("https://api.themoviedb.org/3/search/movie", {
+      query,
+      api_key: process.env.TMDB_API_KEY,
+    });
+    res.json(data.results);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to search TMDB" });
+  }
+});
+
+app.get("/movies/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query("SELECT * FROM movies WHERE id = $1", [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Movie not found" });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to find movie" });
   }
 });
 
@@ -92,13 +122,12 @@ app.post("/movies", async (req, res) => {
   try {
     const movie = await fetchTMDB(
       `https://api.themoviedb.org/3/movie/${tmdb_id}`,
-      {
-        api_key: process.env.TMDB_API_KEY,
-      },
+      { api_key: process.env.TMDB_API_KEY },
     );
 
     const result = await pool.query(
-      "INSERT INTO movies(tmdb_id, title, poster_path, overview, release_date, your_rating, your_notes, date_watched) values ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *",
+      `INSERT INTO movies (tmdb_id, title, poster_path, overview, release_date, your_rating, your_notes, date_watched)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [
         movie.id,
         movie.title,
@@ -113,74 +142,53 @@ app.post("/movies", async (req, res) => {
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.log(err);
+    console.error(err);
     res.status(500).json({ error: "Failed to save movie" });
   }
 });
 
-app.get("/movies/:id", async (req, res) => {
-  const searchID = req.params.id;
-  try {
-    const result = await pool.query("SELECT * FROM movies WHERE id=$1", [
-      searchID,
-    ]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Movie not found" });
-    }
-    res.render("movies", { movie: result.rows[0] });
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: "Failed to Find Movie" });
-  }
-});
-
-app.get("/movies/:id/view", async (req, res) => {
-  const { id } = req.params;
-  try {
-    const result = await pool.query("SELECT * FROM movies WHERE id = $1", [id]);
-    if (result.rows.length === 0) {
-      return res.status(404).send("Movie not found");
-    }
-    res.render("movie", { movie: result.rows[0] });
-  } catch (err) {
-    console.log(err);
-    res.status(500).send("Failed to load movie");
-  }
-});
-
 app.put("/movies/:id", async (req, res) => {
-  const searchID = req.params.id;
+  const { id } = req.params;
   const { your_rating, your_notes, date_watched } = req.body;
   try {
     const result = await pool.query(
-      "UPDATE movies SET your_rating=$1 , your_notes=$2,date_watched=$3 WHERE id=$4 RETURNING *",
-      [your_rating, your_notes, date_watched, searchID],
+      `UPDATE movies
+       SET your_rating = $1, your_notes = $2, date_watched = $3
+       WHERE id = $4
+       RETURNING *`,
+      [your_rating, your_notes, date_watched, id],
     );
     if (result.rows.length === 0) {
-      res.status(404).json({ error: "Movie not found" });
+      return res.status(404).json({ error: "Movie not found" });
     }
     res.json(result.rows[0]);
   } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: "Failed to Update Movie" });
+    console.error(err);
+    res.status(500).json({ error: "Failed to update movie" });
   }
 });
 
 app.delete("/movies/:id", async (req, res) => {
-  const searchID = req.params.id;
+  const { id } = req.params;
   try {
     const result = await pool.query(
-      "DELETE FROM movies WHERE id=$1 RETURNING *",
-      [searchID],
+      "DELETE FROM movies WHERE id = $1 RETURNING *",
+      [id],
     );
     if (result.rows.length === 0) {
-      res.status(404).json({ error: "Movie not found" });
+      return res.status(404).json({ error: "Movie not found" });
     }
-    res.json({ message: "Movie Deleted", movie: result.rows[0] });
+    res.json({ message: "Movie deleted", movie: result.rows[0] });
   } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: "Failed to Delete Movie" });
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete movie" });
   }
+});
+
+// ---------- 404 FALLBACK ----------
+
+app.use((req, res) => {
+  res.status(404).send("Page not found");
 });
 
 app.listen(3000, () => {
