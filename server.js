@@ -17,18 +17,44 @@ app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
+app.set("view engine", "ejs");
+app.set("views", "./views");
+
 async function fetchTMDB(url, params, retries = 3) {
   try {
-    const response = await axios.get(url, { params, timeout: 8000 });
+    const response = await axios.get(url, {
+      params,
+      httpsAgent: agent,
+      timeout: 8000,
+    });
     return response.data;
   } catch (err) {
     if (retries > 0 && err.code === "ECONNRESET") {
-      console.log(`TMDB request failed, retrying... (${retries} left)`);
+      console.log(
+        `TMDB request failed (ECONNRESET), retrying... (${retries} left)`,
+      );
       return fetchTMDB(url, params, retries - 1);
     }
+    console.error("TMDB request failed permanently:", err.message);
     throw err;
   }
 }
+
+app.get("/", async (req, res) => {
+  const { sort } = req.query;
+  let orderBy = "created_at DESC";
+  if (sort === "rating") orderBy = "your_rating DESC";
+  if (sort === "title") orderBy = "title ASC";
+  if (sort === "date") orderBy = "date_watched DESC";
+
+  try {
+    const result = await pool.query(`SELECT * FROM movies ORDER BY ${orderBy}`);
+    res.render("index", { movies: result.rows, currentSort: sort });
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Failed to load movies");
+  }
+});
 
 app.get("/movies", async (req, res) => {
   try {
@@ -37,6 +63,10 @@ app.get("/movies", async (req, res) => {
   } catch (err) {
     console.log(err);
   }
+});
+
+app.get("/add", (req, res) => {
+  res.render("add");
 });
 
 app.get("/movies/search", async (req, res) => {
@@ -95,12 +125,26 @@ app.get("/movies/:id", async (req, res) => {
       searchID,
     ]);
     if (result.rows.length === 0) {
-      res.status(404).json({ error: "Movie not found" });
+      return res.status(404).json({ error: "Movie not found" });
     }
-    res.json(result.rows[0]);
+    res.render("movies", { movie: result.rows[0] });
   } catch (err) {
     console.log(err);
     res.status(500).json({ error: "Failed to Find Movie" });
+  }
+});
+
+app.get("/movies/:id/view", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query("SELECT * FROM movies WHERE id = $1", [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).send("Movie not found");
+    }
+    res.render("movie", { movie: result.rows[0] });
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Failed to load movie");
   }
 });
 

@@ -1,1 +1,32 @@
-hello
+<%- include('partials/header') %>
+
+<div class="page-header">
+  <h1>My Movies</h1>
+  <div class="sort-links">
+    Sort by:
+    <a href="/?sort=date" class="<%= currentSort === 'date' || !currentSort ? 'active' : '' %>">Recent</a>
+    <a href="/?sort=rating" class="<%= currentSort === 'rating' ? 'active' : '' %>">Rating</a>
+    <a href="/?sort=title" class="<%= currentSort === 'title' ? 'active' : '' %>">Title</a>
+  </div>
+</div>
+
+<% if (movies.length === 0) { %>
+  <p class="empty-state">No movies yet. <a href="/add">Add your first one</a>.</p>
+<% } else { %>
+  <div class="movie-grid">
+    <% movies.forEach(movie => { %>
+      <a href="/movies/<%= movie.id %>/view" class="movie-card">
+        <img
+          src="<%= movie.poster_path ? 'https://image.tmdb.org/t/p/w342' + movie.poster_path : '/img/no-poster.png' %>"
+          alt="<%= movie.title %>"
+        >
+        <div class="movie-card-info">
+          <h3><%= movie.title %></h3>
+          <span class="rating">⭐ <%= movie.your_rating %>/10</span>
+        </div>
+      </a>
+    <% }) %>
+  </div>
+<% } %>
+
+<%- include('partials/footer') %>

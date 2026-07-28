@@ -1,0 +1,108 @@
+<%- include('partials/header') %>
+
+<h1>Add a Movie</h1>
+
+<div class="search-bar">
+  <input
+    type="text"
+    id="searchInput"
+    placeholder="Search for a movie title..."
+  />
+  <button id="searchBtn">Search</button>
+</div>
+
+<div id="results" class="movie-grid"></div>
+
+<!-- Hidden form, shown when a movie is selected -->
+<div id="addForm" class="add-form hidden">
+  <h2 id="selectedTitle"></h2>
+  <input type="hidden" id="selectedTmdbId" />
+
+  <label>Your Rating (1-10)</label>
+  <input type="number" id="ratingInput" min="1" max="10" required />
+
+  <label>Date Watched</label>
+  <input type="date" id="dateInput" required />
+
+  <label>Your Notes</label>
+  <textarea
+    id="notesInput"
+    rows="5"
+    placeholder="What stood out to you?"
+  ></textarea>
+
+  <button id="submitBtn">Save to My List</button>
+  <button id="cancelBtn" class="secondary">Cancel</button>
+</div>
+
+<script>
+  const searchInput = document.getElementById("searchInput");
+  const searchBtn = document.getElementById("searchBtn");
+  const resultsDiv = document.getElementById("results");
+  const addForm = document.getElementById("addForm");
+  const selectedTitle = document.getElementById("selectedTitle");
+  const selectedTmdbId = document.getElementById("selectedTmdbId");
+
+  async function doSearch() {
+    const query = searchInput.value.trim();
+    if (!query) return;
+
+    const response = await fetch(
+      `/movies/search?query=${encodeURIComponent(query)}`,
+    );
+    const movies = await response.json();
+
+    resultsDiv.innerHTML = movies
+      .map(
+        (movie) => `
+      <div class="movie-card result-card" onclick="selectMovie(${movie.id}, '${movie.title.replace(/'/g, "\\'")}')">
+        <img src="${movie.poster_path ? "https://image.tmdb.org/t/p/w342" + movie.poster_path : "/img/no-poster.png"}" alt="${movie.title}">
+        <div class="movie-card-info">
+          <h3>${movie.title}</h3>
+          <span class="rating">${movie.release_date ? movie.release_date.slice(0, 4) : ""}</span>
+        </div>
+      </div>
+    `,
+      )
+      .join("");
+  }
+
+  searchBtn.addEventListener("click", doSearch);
+  searchInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") doSearch();
+  });
+
+  function selectMovie(tmdbId, title) {
+    selectedTmdbId.value = tmdbId;
+    selectedTitle.textContent = title;
+    addForm.classList.remove("hidden");
+    addForm.scrollIntoView({ behavior: "smooth" });
+  }
+
+  document.getElementById("cancelBtn").addEventListener("click", () => {
+    addForm.classList.add("hidden");
+  });
+
+  document.getElementById("submitBtn").addEventListener("click", async () => {
+    const body = {
+      tmdb_id: Number(selectedTmdbId.value),
+      your_rating: Number(document.getElementById("ratingInput").value),
+      your_notes: document.getElementById("notesInput").value,
+      date_watched: document.getElementById("dateInput").value,
+    };
+
+    const response = await fetch("/movies", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (response.ok) {
+      window.location.href = "/";
+    } else {
+      alert("Failed to save movie. Please try again.");
+    }
+  });
+</script>
+
+<%- include('partials/footer') %>

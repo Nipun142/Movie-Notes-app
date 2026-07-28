@@ -1,0 +1,113 @@
+<%- include('partials/header') %>
+
+<a href="/" class="back-link">&larr; Back to My Movies</a>
+
+<div class="detail-layout">
+  <img
+    class="detail-poster"
+    src="<%= movie.poster_path ? 'https://image.tmdb.org/t/p/w500' + movie.poster_path : '/img/no-poster.png' %>"
+    alt="<%= movie.title %>"
+  />
+
+  <div class="detail-info">
+    <h1><%= movie.title %></h1>
+    <p class="release-date">
+      <%= movie.release_date ? movie.release_date.toISOString().slice(0,4) : ''
+      %>
+    </p>
+    <p class="overview"><%= movie.overview %></p>
+
+    <hr />
+
+    <div id="viewMode">
+      <p><strong>Your Rating:</strong> ⭐ <%= movie.your_rating %>/10</p>
+      <p>
+        <strong>Date Watched:</strong> <%= movie.date_watched ?
+        movie.date_watched.toISOString().slice(0,10) : 'N/A' %>
+      </p>
+      <p><strong>Your Notes:</strong></p>
+      <p class="notes"><%= movie.your_notes %></p>
+
+      <button id="editBtn">Edit</button>
+      <button id="deleteBtn" class="danger">Delete</button>
+    </div>
+
+    <div id="editMode" class="hidden">
+      <label>Your Rating (1-10)</label>
+      <input
+        type="number"
+        id="editRating"
+        min="1"
+        max="10"
+        value="<%= movie.your_rating %>"
+      />
+
+      <label>Date Watched</label>
+      <input
+        type="date"
+        id="editDate"
+        value="<%= movie.date_watched ? movie.date_watched.toISOString().slice(0,10) : '' %>"
+      />
+
+      <label>Your Notes</label>
+      <textarea id="editNotes" rows="6"><%= movie.your_notes %></textarea>
+
+      <button id="saveBtn">Save Changes</button>
+      <button id="cancelEditBtn" class="secondary">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const movieId = <%= movie.id %>;
+
+  const viewMode = document.getElementById('viewMode');
+  const editMode = document.getElementById('editMode');
+
+  document.getElementById('editBtn').addEventListener('click', () => {
+    viewMode.classList.add('hidden');
+    editMode.classList.remove('hidden');
+  });
+
+  document.getElementById('cancelEditBtn').addEventListener('click', () => {
+    editMode.classList.add('hidden');
+    viewMode.classList.remove('hidden');
+  });
+
+  document.getElementById('saveBtn').addEventListener('click', async () => {
+    const body = {
+      your_rating: Number(document.getElementById('editRating').value),
+      your_notes: document.getElementById('editNotes').value,
+      date_watched: document.getElementById('editDate').value,
+    };
+
+    const response = await fetch(`/movies/${movieId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (response.ok) {
+      window.location.reload();
+    } else {
+      alert('Failed to update movie.');
+    }
+  });
+
+  document.getElementById('deleteBtn').addEventListener('click', async () => {
+    const confirmed = confirm('Are you sure you want to delete this movie from your list?');
+    if (!confirmed) return;
+
+    const response = await fetch(`/movies/${movieId}`, {
+      method: 'DELETE',
+    });
+
+    if (response.ok) {
+      window.location.href = '/';
+    } else {
+      alert('Failed to delete movie.');
+    }
+  });
+</script>
+
+<%- include('partials/footer') %>
