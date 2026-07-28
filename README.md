@@ -41,7 +41,7 @@ Built as a capstone project to practice full-stack CRUD development with a publi
 ### 1. Clone the repo
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/Nipun142/Movie-Notes-app.git
 cd movie-notes-app
 ```
 
